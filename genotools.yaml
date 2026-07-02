@@ -1,0 +1,5 @@
+name: geno-vault
+version: "0.1.0"
+description: Persistence + sync conductor for the geno object-notation registry — the `vault` CLI. Git-versions ~/.geno/workspace.json, orchestrates tt/surf pull-push, and watches for changes (geno-pear pattern). Part of the geno-tools ecosystem.
+license: MIT
+author: 42euge
