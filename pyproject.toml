@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geno-vault"
+version = "0.1.0"
+description = "Persistence + sync conductor for the geno object-notation registry (the `vault` CLI)."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "42euge" }]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+vault = "geno_vault.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["geno_vault*"]
