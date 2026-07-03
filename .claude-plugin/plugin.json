@@ -1,7 +1,7 @@
 {
   "name": "geno-vault",
   "description": "Persistence + sync conductor for the geno object-notation registry — the vault CLI",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": { "name": "42euge", "url": "https://github.com/42euge" },
   "homepage": "https://github.com/42euge/geno-vault",
   "repository": "https://github.com/42euge/geno-vault",

@@ -75,18 +75,33 @@ def main(argv: list[str] | None = None) -> int:
         f = vault.REGISTRY
         if not f.exists():
             raise SystemExit(f"registry {f} doesn't exist yet — run vault sync first.")
-        print(f"watching {f} (geno-pear poll). Ctrl-C to stop.")
-        last = f.stat().st_mtime if f.exists() else 0
+
+        def _on_change(_path):
+            sha = vault.snapshot("watch: registry changed " + time.strftime("%H:%M:%S"))
+            print(f"  {time.strftime('%H:%M:%S')} changed → committed {sha or '(no-op)'}")
+            if apply:
+                _run(["surf", "reg", "push"]); _run(["tt", "iterm", "reg", "push"])
+
+        # Compose the ecosystem: use geno-pear's watch library if installed,
+        # else fall back to the same mechanism inline (keeps geno-vault standalone).
         try:
-            while True:
-                cur = f.stat().st_mtime if f.exists() else last
-                if cur != last:
-                    last = cur
-                    sha = vault.snapshot("watch: registry changed " + time.strftime("%H:%M:%S"))
-                    print(f"  {time.strftime('%H:%M:%S')} changed → committed {sha or '(no-op)'}")
-                    if apply:
-                        _run(["surf", "reg", "push"]); _run(["tt", "iterm", "reg", "push"])
-                time.sleep(1)
+            from geno_pear import watch as pear_watch
+            src = "geno-pear library"
+        except ImportError:
+            pear_watch = None
+            src = "built-in poll (pip install 'geno-vault[watch]' for the shared geno-pear watcher)"
+        print(f"watching {f} via {src}. Ctrl-C to stop.")
+        try:
+            if pear_watch:
+                pear_watch(f, _on_change, interval=1.0)
+            else:
+                last = f.stat().st_mtime
+                while True:
+                    cur = f.stat().st_mtime if f.exists() else last
+                    if cur != last:
+                        last = cur
+                        _on_change(str(f))
+                    time.sleep(1)
         except KeyboardInterrupt:
             print("\nstopped.")
 
