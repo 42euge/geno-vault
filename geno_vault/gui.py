@@ -8,12 +8,16 @@ start a new session — by shelling out to tt / surf. Localhost only.
 
 import json
 import re
+import shutil
 import subprocess
+import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import vault
+
+_AUTO_PULL_INTERVAL = 45  # seconds — keeps the registry from going stale after iTerm/Chrome restarts
 
 # Whitelisted actions → argv. {node} and {name} are substituted from the request.
 _ACTIONS = {
@@ -443,9 +447,26 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"output": "\n\n".join(lines)}))
 
 
+def _auto_pull_loop(stop: threading.Event) -> None:
+    """Background heartbeat: re-pull tt/surf into the registry on an interval so
+    stale ttys/tab groups (from a restarted iTerm or closed Chromium) self-heal
+    without a manual `vault sync`. Each puller is independent and silent on
+    failure — surf being down (Chromium not running) must not block tt's pull."""
+    while not stop.wait(_AUTO_PULL_INTERVAL):
+        for cmd in (["tt", "iterm", "reg", "pull"], ["surf", "reg", "pull"]):
+            if not shutil.which(cmd[0]):
+                continue
+            try:
+                subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            except Exception:  # noqa: BLE001 — heartbeat must never crash the server
+                pass
+
+
 def serve(port: int = 8787, open_browser: bool = True) -> None:
     srv = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
     url = f"http://127.0.0.1:{port}/"
+    stop = threading.Event()
+    threading.Thread(target=_auto_pull_loop, args=(stop,), daemon=True).start()
     print(f"geno workspace GUI → {url}  (Ctrl-C to stop)")
     if open_browser:
         webbrowser.open(url)
@@ -453,4 +474,5 @@ def serve(port: int = 8787, open_browser: bool = True) -> None:
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nstopped.")
+        stop.set()
         srv.shutdown()
