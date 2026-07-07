@@ -25,97 +25,266 @@ _ACTIONS = {
 _HTML = """<!doctype html><meta charset=utf-8>
 <title>geno · workspace</title>
 <style>
- body{font:14px/1.5 -apple-system,system-ui,sans-serif;margin:0;background:#0f1115;color:#e6e6e6}
- header{padding:14px 20px;background:#171a21;border-bottom:1px solid #262b36;display:flex;gap:10px;align-items:center}
+ html,body{height:100%}
+ body{font:14px/1.5 -apple-system,system-ui,sans-serif;margin:0;background:#0b0d11;color:#e6e6e6;
+  display:flex;flex-direction:column;overflow:hidden}
+ header{padding:14px 20px;background:#171a21;border-bottom:1px solid #262b36;display:flex;gap:10px;align-items:center;flex:none}
  h1{font-size:15px;margin:0;font-weight:600}h1 small{color:#7d8590;font-weight:400}
  button{font:inherit;background:#2a3140;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 11px;cursor:pointer}
  button:hover{background:#343d4f}button.act{background:#1f6feb;border-color:#1f6feb}
- .wrap{padding:16px 20px}
- .node{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #262b36;border-radius:8px;margin:6px 0;background:#141821}
- .path{font-weight:600;min-width:230px}
- .badge{font-size:12px;padding:2px 8px;border-radius:10px;border:1px solid #3a4252;color:#adbac7}
- .iterm{border-color:#2ea043;color:#3fb950}.chrome{border-color:#8957e5;color:#a371f7}
- .group{margin:14px 0}
- .ghead{display:flex;align-items:center;gap:8px;padding:4px 2px;cursor:pointer;font-weight:600;color:#e6e6e6;text-transform:none}
- .ghead:hover{color:#58a6ff}.gcount{font-size:12px;color:#7d8590;font-weight:400}
- .caret{color:#7d8590;width:12px;display:inline-block}
- .members{margin-left:14px}.members.hidden{display:none}
- .path{padding-left:0}
- .spacer{flex:1}#out{white-space:pre-wrap;font:12px ui-monospace,monospace;color:#7d8590;padding:8px 20px}
+ .spacer{flex:1}
+ #search{font:inherit;background:#0f1115;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 10px;width:200px}
+
+ /* main is a horizontal split: left column (tree + shell) | right detail pane, both real flex children */
+ main{flex:1;display:flex;min-height:0}
+ #left{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+ #scroll{flex:1;overflow-y:auto}
+
+ /* tier 1 — program cards, stacked in one alphabetical column so reading order is unambiguous */
+ .grid{display:flex;flex-direction:column;gap:12px;padding:16px 20px;max-width:760px}
+ .card{background:#12151b;border:1px solid #262b36;border-radius:10px;overflow:hidden}
+ .chead{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#171a21;border-bottom:1px solid #262b36;cursor:pointer}
+ .chead:hover{background:#1b1f28}
+ .cname{font-weight:700;letter-spacing:.2px}
+ .ccount{font-size:12px;color:#7d8590;font-weight:400}
+ .cbody{padding:8px 6px}
+ .cbody.hidden{display:none}
+ .cadd{margin-left:auto;background:none;border:none;color:#7d8590;font-size:16px;padding:0 4px;line-height:1}
+ .cadd:hover{color:#58a6ff;background:none}
+
+ /* tier 2 — object-notation tree: path + connector lines only, nothing else competing for the line */
+ .tree{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+ .branch{white-space:pre;color:#4d5566}
+ .seg{color:#adbac7;font-weight:600;font-family:-apple-system,sans-serif;font-size:13px}
+ .leaf{display:flex;align-items:center;padding:3px 6px;border-radius:6px;cursor:pointer}
+ .leaf:hover{background:#1a1e26}
+ .leaf.sel{background:#16324d;box-shadow:inset 2px 0 0 #58a6ff}
+ .dot{width:7px;height:7px;border-radius:50%;flex:none;margin:0 4px 0 6px;background:#3a4252}
+
+ /* launch modal */
+ #overlay{display:none;position:fixed;inset:0;background:#000a;align-items:center;justify-content:center;z-index:10}
+ #launch{background:#171a21;border:1px solid #3a4252;border-radius:10px;padding:20px;width:360px}
+ #launch h2{margin:0 0 14px;font-size:14px;color:#e6e6e6}
+ #launch label{display:block;font-size:12px;color:#7d8590;margin:10px 0 4px}
+ #launch input,#launch select{font:inherit;width:100%;box-sizing:border-box;background:#0f1115;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:7px 10px}
+ #launch .row{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+
+ /* detail pane — a real docked column on the right, only present in the layout while open */
+ #detail{flex:none;width:0;overflow:hidden;background:#12151b;border-left:1px solid #262b36;
+  transition:width .16s ease;overflow-y:auto}
+ #detail.open{width:340px}
+ #detail .dhead{display:flex;align-items:center;gap:8px;padding:16px 18px;border-bottom:1px solid #262b36}
+ #detail .dpath{font-weight:700;font-size:14px;word-break:break-all}
+ #detail .dclose{margin-left:auto;background:none;border:none;color:#7d8590;font-size:18px;padding:0 4px}
+ #detail .dclose:hover{color:#e6e6e6;background:none}
+ #detail .dsection{padding:14px 18px;border-bottom:1px solid #1c2029}
+ #detail .dlabel{font-size:11px;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+ #detail .dswatch{width:9px;height:9px;border-radius:50%;flex:none}
+ #detail .drow{display:flex;gap:6px;font:12.5px ui-monospace,monospace;color:#c9d1d9;word-break:break-all;padding:2px 0}
+ #detail .drow b{color:#7d8590;font-weight:400;flex:none}
+ #detail .durl{display:block;color:#a371f7;text-decoration:none;font-size:12px;padding:2px 0;word-break:break-all}
+ #detail .durl:hover{text-decoration:underline}
+ #detail .dempty{color:#4d5566;font-style:italic;font-size:12.5px}
+ #detail .dactions{padding:14px 18px;display:flex;gap:8px}
+
+ /* shell pane — separate fixed strip at the bottom, not inline with the tree */
+ #shell{flex:none;height:170px;display:flex;flex-direction:column;background:#0d0f13;border-top:1px solid #262b36}
+ #shell .shead{flex:none;display:flex;align-items:center;gap:8px;padding:6px 14px;color:#7d8590;font-size:11px;
+  text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #1c2029}
+ #shell .sclear{margin-left:auto;background:none;border:none;color:#4d5566;font-size:11px;padding:0;text-transform:none;letter-spacing:0}
+ #shell .sclear:hover{color:#e6e6e6;background:none}
+ #out{flex:1;overflow-y:auto;white-space:pre-wrap;font:12px ui-monospace,monospace;color:#7d8590;padding:8px 14px;margin:0}
 </style>
 <header>
  <h1>geno · workspace <small id=head></small></h1>
  <span id=live style="font-size:12px;color:#7d8590">○ connecting…</span>
  <div class=spacer></div>
- <button class=act onclick=showLaunch()>＋ session</button>
+ <input id=search placeholder="filter…" oninput=applyFilter()>
+ <button class=act onclick="showLaunch('')">＋ session</button>
 </header>
-<div id=launch style="display:none;padding:10px 20px;background:#171a21;border-bottom:1px solid #262b36">
- <form onsubmit="startSession(event)" style="display:flex;gap:8px;align-items:center">
-  <span style="color:#7d8590;font-size:13px">name:</span>
-  <input id=lname type=text placeholder="program.area (e.g. bluebeam.rf)" required
-   style="font:inherit;background:#0f1115;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 10px;width:260px">
-  <select id=ltype style="font:inherit;background:#0f1115;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 10px">
-   <option value=new-task>new task window (+ orchestrator)</option>
-   <option value=new-tab-cc>new tab (Claude Code)</option>
-   <option value=new-tab>new tab (shell)</option>
-  </select>
-  <button class=act type=submit>launch</button>
-  <button type=button onclick=hideLaunch()>cancel</button>
- </form>
+<main>
+ <div id=left>
+  <div id=scroll><div class=grid id=nodes></div></div>
+  <div id=shell>
+   <div class=shead>shell<button class=sclear onclick="document.getElementById('out').textContent=''">clear</button></div>
+   <pre id=out></pre>
+  </div>
+ </div>
+ <div id=detail>
+  <div class=dhead>
+   <span class=dpath id=dpath></span>
+   <button class=dclose onclick=closeDetail()>✕</button>
+  </div>
+  <div id=dbody></div>
+  <div class=dactions>
+   <button class=act id=dfocus>focus</button>
+   <button id=daddtab>+ tab here</button>
+  </div>
+ </div>
+</main>
+
+<div id=overlay onclick="if(event.target===this)hideLaunch()">
+ <div id=launch>
+  <h2>start a session</h2>
+  <form onsubmit="startSession(event)">
+   <label>object-notation name</label>
+   <input id=lname type=text placeholder="program.area.aspect" required autocomplete=off>
+   <label>type</label>
+   <select id=ltype>
+    <option value=new-task>new task window (+ orchestrator)</option>
+    <option value=new-tab-cc>new tab (Claude Code)</option>
+    <option value=new-tab>new tab (shell)</option>
+   </select>
+   <div class=row>
+    <button type=button onclick=hideLaunch()>cancel</button>
+    <button class=act type=submit>launch</button>
+   </div>
+  </form>
+ </div>
 </div>
-<div class=wrap id=nodes></div>
-<div id=out></div>
+
 <script>
-function nodeRow(n){
- let b='';
- if(n.iterm)b+=`<span class="badge iterm">iterm ${n.iterm}</span>`;
- if(n.chrome)b+=`<span class="badge chrome">chrome ${n.chrome}</span>`;
- return `<div class=node><span class=path>${n.path}</span>${b}<span class=spacer></span>`+
-  `<button onclick="act('focus','${n.path}')">focus</button></div>`;
+const CHROME_COLORS={grey:'#5f6368',blue:'#1a73e8',red:'#d93025',yellow:'#f9ab00',
+ green:'#1e8e3e',pink:'#d01884',purple:'#a142f4',cyan:'#12b5cb',orange:'#fa903e'};
+
+function buildTree(nodes){
+ const root={children:{}};
+ nodes.forEach(n=>{
+  const parts=n.path.split('.');
+  let cur=root, acc=[];
+  parts.forEach((p,i)=>{
+   acc.push(p);
+   cur.children=cur.children||{};
+   cur.children[p]=cur.children[p]||{name:p,path:acc.join('.'),children:null};
+   cur=cur.children[p];
+   if(i===parts.length-1)cur.leaf=n;
+  });
+ });
+ return root;
 }
-function toggle(g){document.getElementById('m-'+g).classList.toggle('hidden');
+function leafCount(t){
+ let c=t.leaf?1:0;
+ if(t.children)for(const k in t.children)c+=leafCount(t.children[k]);
+ return c;
+}
+function renderChildren(children,prefix){
+ const entries=Object.entries(children).sort((a,b)=>a[0].localeCompare(b[0]));
+ return entries.map(([name,child],i)=>{
+  const last=i===entries.length-1;
+  const connector=last?'└─':'├─';
+  const childPrefix=prefix+(last?'   ':'│  ');
+  const color=child.leaf&&child.leaf.chrome?CHROME_COLORS[child.leaf.chrome.color]||'#3a4252':null;
+  const leafPath=child.leaf?child.leaf.path:'';
+  let html=`<div class="leaf${child.leaf?'':' nonleaf'}" ${child.leaf?`onclick="openDetail('${leafPath}')" data-leaf="${leafPath}"`:''}>`+
+   `<span class=branch>${prefix}${connector} </span><span class=seg>${name}</span>`+
+   `<span class=spacer></span>`+
+   (color?`<span class=dot style="background:${color}"></span>`:'')+
+   `</div>`;
+  if(child.children)html+=renderChildren(child.children,childPrefix);
+  return html;
+ }).join('');
+}
+function toggle(g){document.getElementById('b-'+g).classList.toggle('hidden');
  const c=document.getElementById('c-'+g);c.textContent=c.textContent==='▾'?'▸':'▾';}
+let lastData=null, selectedPath=null;
 function render(d){
+ lastData=d;
  document.getElementById('head').textContent=d.count+' nodes · '+(d.head||'no snapshot');
- const groups={};
- d.nodes.forEach(n=>{const g=n.path.split('.')[0];(groups[g]=groups[g]||[]).push(n)});
- const html=Object.keys(groups).sort().map(g=>
-  `<div class=group>`+
-   `<div class=ghead onclick="toggle('${g}')"><span class=caret id=c-${g}>▾</span>`+
-   `${g} <span class=gcount>${groups[g].length}</span></div>`+
-   `<div class=members id=m-${g}>${groups[g].map(nodeRow).join('')}</div></div>`
- ).join('');
- document.getElementById('nodes').innerHTML=html||'<i>registry empty</i>';
+ const tree=buildTree(d.nodes);
+ const groups=Object.entries(tree.children||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+ document.getElementById('nodes').innerHTML=groups.map(([g,sub])=>
+  `<div class=card data-group="${g}">`+
+   `<div class=chead onclick="toggle('${g}')">`+
+    `<span class=caret id=c-${g}>▾</span><span class=cname>${g}</span>`+
+    `<span class=ccount>${leafCount(sub)}</span>`+
+    `<button class=cadd title="new session under ${g}" onclick="event.stopPropagation();showLaunch('${g}.')">＋</button>`+
+   `</div>`+
+   `<div class="cbody tree" id=b-${g}>${renderChildren(sub.children,'')}</div>`+
+  `</div>`
+ ).join('') || '<i style="padding:0 20px">registry empty</i>';
+ applyFilter();
+ markSelected();
+ if(selectedPath)openDetail(selectedPath,true);  // refresh panel content if it's open
+}
+function markSelected(){
+ document.querySelectorAll('.leaf.sel').forEach(el=>el.classList.remove('sel'));
+ if(selectedPath){
+  const el=document.querySelector(`.leaf[data-leaf="${selectedPath}"]`);
+  if(el)el.classList.add('sel');
+ }
+}
+function applyFilter(){
+ const q=document.getElementById('search').value.trim().toLowerCase();
+ document.querySelectorAll('.card').forEach(card=>{
+  const hit=!q||card.dataset.group.toLowerCase().includes(q)||card.textContent.toLowerCase().includes(q);
+  card.style.display=hit?'':'none';
+ });
+}
+function openDetail(path,silent){
+ const n=(lastData.nodes||[]).find(x=>x.path===path);
+ if(!n)return closeDetail();
+ selectedPath=path;
+ markSelected();
+ document.getElementById('dpath').textContent=path;
+ const it=n.iterm, ch=n.chrome;
+ const itHtml=it?
+  `<div class=drow><b>tty</b>${it.tty||'—'}</div>`+
+  `<div class=drow><b>cwd</b>${it.cwd||'—'}</div>`+
+  `<div class=drow><b>window</b>${it.window_id||'—'}</div>`
+  :`<div class=dempty>no iTerm tab attached</div>`;
+ const swatch=ch?`<span class=dswatch style="background:${CHROME_COLORS[ch.color]||'#3a4252'}"></span>`:'';
+ const chHtml=ch?
+  `<div class=drow><b>group</b>${ch.group||'—'}</div>`+
+  `<div class=drow><b>color</b>${ch.color||'—'}</div>`+
+  (ch.urls&&ch.urls.length?ch.urls.map(u=>`<a class=durl href="${u}" target=_blank>${u}</a>`).join(''):`<div class=dempty>no tabs</div>`)
+  :`<div class=dempty>no Chrome tab group attached</div>`;
+ document.getElementById('dbody').innerHTML=
+  `<div class=dsection><div class=dlabel>⌁ iterm</div>${itHtml}</div>`+
+  `<div class=dsection><div class=dlabel>${swatch}⧉ chrome</div>${chHtml}</div>`;
+ document.getElementById('dfocus').onclick=()=>act('focus',path);
+ document.getElementById('daddtab').onclick=()=>showLaunch(path+'.');
+ document.getElementById('detail').classList.add('open');
+}
+function closeDetail(){
+ selectedPath=null;
+ document.getElementById('detail').classList.remove('open');
+ markSelected();
 }
 async function act(action,node){
- document.getElementById('out').textContent='running '+action+(node?' '+node:'')+'…';
+ const out=document.getElementById('out');
+ out.textContent+=(out.textContent?'\\n\\n':'')+'$ '+action+(node?' '+node:'')+'…';
+ out.scrollTop=out.scrollHeight;
  const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify({action,node})});
- const d=await r.json();document.getElementById('out').textContent=d.output;
+ const d=await r.json();
+ out.textContent+='\\n'+d.output;
+ out.scrollTop=out.scrollHeight;
  // registry-changing actions (new-task/new-tab*) land via the SSE stream;
  // focus doesn't touch the registry, so nothing to wait for.
 }
-function showLaunch(){document.getElementById('launch').style.display='block';document.getElementById('lname').focus();}
-function hideLaunch(){document.getElementById('launch').style.display='none';}
+function showLaunch(prefix){
+ document.getElementById('overlay').style.display='flex';
+ const f=document.getElementById('lname');f.value=prefix||'';f.focus();
+ f.setSelectionRange(f.value.length,f.value.length);
+}
+function hideLaunch(){document.getElementById('overlay').style.display='none';}
 async function startSession(e){
  e.preventDefault();
  const name=document.getElementById('lname').value.trim();
  const type=document.getElementById('ltype').value;
  if(!name)return;
  hideLaunch();
- document.getElementById('out').textContent='launching '+type+' '+name+'…';
- const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({action:type,name})});
- const d=await r.json();document.getElementById('out').textContent=d.output;
+ await act(type,name);
 }
-let es=null, live=false;
+let es=null;
 function connect(){
  es=new EventSource('/api/events');
  es.onmessage=ev=>{render(JSON.parse(ev.data));setLive(true);};
  es.onerror=()=>setLive(false);
 }
-function setLive(ok){live=ok;document.getElementById('live').textContent=ok?'● live':'○ reconnecting…';
+function setLive(ok){document.getElementById('live').textContent=ok?'● live':'○ reconnecting…';
  document.getElementById('live').style.color=ok?'#3fb950':'#7d8590';}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideLaunch();closeDetail();}});
 connect();
 </script>"""
 
@@ -124,12 +293,19 @@ def _status() -> dict:
     reg = vault.load_registry().get("nodes", {})
     nodes = []
     for path, n in sorted(reg.items()):
-        it = n.get("iterm", {})
-        ch = n.get("chrome", {})
+        it = n.get("iterm")
+        ch = n.get("chrome")
         nodes.append({
             "path": path,
-            "iterm": (it.get("cwd") or it.get("tty") or "·") if it else "",
-            "chrome": (f"{len(ch.get('urls', []))}t/{ch.get('color', '')}") if ch else "",
+            "iterm": {
+                "loc": it.get("cwd") or it.get("tty") or "",
+                "tty": it.get("tty", ""), "cwd": it.get("cwd", ""),
+                "window_id": it.get("window_id", ""),
+            } if it else None,
+            "chrome": {
+                "tabs": len(ch.get("urls", [])), "color": ch.get("color", ""),
+                "group": ch.get("group", ""), "urls": ch.get("urls", []),
+            } if ch else None,
         })
     head = (vault.log(1) or [""])[0]
     return {"count": len(nodes), "nodes": nodes, "head": head}
