@@ -1,13 +1,14 @@
 """A simple local web GUI for managing the workspace registry.
 
 `vault gui` serves a one-page control panel (stdlib http.server, no deps) that
-shows every object-notation node with its surfaces and offers actions —
-focus a node (iTerm + Chrome), sync/apply the registry — by shelling out to
-tt / surf / vault. Localhost only.
+shows every object-notation node with its surfaces, live-updating over SSE as
+the registry changes, and offers actions — focus a node (iTerm + Chrome),
+start a new session — by shelling out to tt / surf. Localhost only.
 """
 
 import json
 import subprocess
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -15,8 +16,6 @@ from . import vault
 
 # Whitelisted actions → argv. {node} and {name} are substituted from the request.
 _ACTIONS = {
-    "sync":       [["vault", "sync"]],
-    "apply":      [["vault", "apply"]],
     "focus":      [["tt", "iterm", "focus", "{node}"], ["surf", "focus", "{node}"]],
     "new-task":   [["tt", "iterm", "new-task", "{name}"]],
     "new-tab":    [["tt", "iterm", "tab", "{name}"]],
@@ -46,10 +45,8 @@ _HTML = """<!doctype html><meta charset=utf-8>
 </style>
 <header>
  <h1>geno · workspace <small id=head></small></h1>
+ <span id=live style="font-size:12px;color:#7d8590">○ connecting…</span>
  <div class=spacer></div>
- <button class=act onclick=act('sync')>⤓ sync</button>
- <button class=act onclick=act('apply')>⤒ apply</button>
- <button onclick=load()>↻</button>
  <button class=act onclick=showLaunch()>＋ session</button>
 </header>
 <div id=launch style="display:none;padding:10px 20px;background:#171a21;border-bottom:1px solid #262b36">
@@ -78,8 +75,7 @@ function nodeRow(n){
 }
 function toggle(g){document.getElementById('m-'+g).classList.toggle('hidden');
  const c=document.getElementById('c-'+g);c.textContent=c.textContent==='▾'?'▸':'▾';}
-async function load(){
- const r=await fetch('/api/status');const d=await r.json();
+function render(d){
  document.getElementById('head').textContent=d.count+' nodes · '+(d.head||'no snapshot');
  const groups={};
  d.nodes.forEach(n=>{const g=n.path.split('.')[0];(groups[g]=groups[g]||[]).push(n)});
@@ -89,14 +85,15 @@ async function load(){
    `${g} <span class=gcount>${groups[g].length}</span></div>`+
    `<div class=members id=m-${g}>${groups[g].map(nodeRow).join('')}</div></div>`
  ).join('');
- document.getElementById('nodes').innerHTML=html||'<i>registry empty — run sync</i>';
+ document.getElementById('nodes').innerHTML=html||'<i>registry empty</i>';
 }
 async function act(action,node){
  document.getElementById('out').textContent='running '+action+(node?' '+node:'')+'…';
  const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify({action,node})});
  const d=await r.json();document.getElementById('out').textContent=d.output;
- if(action!=='focus')load();
+ // registry-changing actions (new-task/new-tab*) land via the SSE stream;
+ // focus doesn't touch the registry, so nothing to wait for.
 }
 function showLaunch(){document.getElementById('launch').style.display='block';document.getElementById('lname').focus();}
 function hideLaunch(){document.getElementById('launch').style.display='none';}
@@ -110,10 +107,32 @@ async function startSession(e){
  const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify({action:type,name})});
  const d=await r.json();document.getElementById('out').textContent=d.output;
- setTimeout(load,1500);
 }
-load();
+let es=null, live=false;
+function connect(){
+ es=new EventSource('/api/events');
+ es.onmessage=ev=>{render(JSON.parse(ev.data));setLive(true);};
+ es.onerror=()=>setLive(false);
+}
+function setLive(ok){live=ok;document.getElementById('live').textContent=ok?'● live':'○ reconnecting…';
+ document.getElementById('live').style.color=ok?'#3fb950':'#7d8590';}
+connect();
 </script>"""
+
+
+def _status() -> dict:
+    reg = vault.load_registry().get("nodes", {})
+    nodes = []
+    for path, n in sorted(reg.items()):
+        it = n.get("iterm", {})
+        ch = n.get("chrome", {})
+        nodes.append({
+            "path": path,
+            "iterm": (it.get("cwd") or it.get("tty") or "·") if it else "",
+            "chrome": (f"{len(ch.get('urls', []))}t/{ch.get('color', '')}") if ch else "",
+        })
+    head = (vault.log(1) or [""])[0]
+    return {"count": len(nodes), "nodes": nodes, "head": head}
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -132,19 +151,39 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/":
             return self._send(200, _HTML, "text/html; charset=utf-8")
         if self.path == "/api/status":
-            reg = vault.load_registry().get("nodes", {})
-            nodes = []
-            for path, n in sorted(reg.items()):
-                it = n.get("iterm", {})
-                ch = n.get("chrome", {})
-                nodes.append({
-                    "path": path,
-                    "iterm": (it.get("cwd") or it.get("tty") or "·") if it else "",
-                    "chrome": (f"{len(ch.get('urls', []))}t/{ch.get('color', '')}") if ch else "",
-                })
-            head = (vault.log(1) or [""])[0]
-            return self._send(200, json.dumps({"count": len(nodes), "nodes": nodes, "head": head}))
+            return self._send(200, json.dumps(_status()))
+        if self.path == "/api/events":
+            return self._sse_events()
         self._send(404, b"not found", "text/plain")
+
+    def _sse_events(self):
+        """Server-Sent Events: push a fresh /api/status payload whenever the
+        registry file's mtime changes (geno-pear's poll pattern), plus a
+        keepalive comment every ~15s so the connection doesn't look dead."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        last_mtime = None
+        last_ping = time.monotonic()
+        try:
+            self.wfile.write(f"data: {json.dumps(_status())}\n\n".encode())
+            self.wfile.flush()
+            while True:
+                time.sleep(1)
+                cur = vault.REGISTRY.stat().st_mtime if vault.REGISTRY.exists() else None
+                if cur != last_mtime:
+                    last_mtime = cur
+                    self.wfile.write(f"data: {json.dumps(_status())}\n\n".encode())
+                    self.wfile.flush()
+                    last_ping = time.monotonic()
+                elif time.monotonic() - last_ping > 15:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_ping = time.monotonic()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # client tab closed
 
     def do_POST(self):
         if self.path != "/api/action":
