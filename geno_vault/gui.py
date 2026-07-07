@@ -13,11 +13,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import vault
 
-# Whitelisted actions → argv. {node} is substituted from the request.
+# Whitelisted actions → argv. {node} and {name} are substituted from the request.
 _ACTIONS = {
-    "sync":  [["vault", "sync"]],
-    "apply": [["vault", "apply"]],
-    "focus": [["tt", "iterm", "focus", "{node}"], ["surf", "focus", "{node}"]],
+    "sync":       [["vault", "sync"]],
+    "apply":      [["vault", "apply"]],
+    "focus":      [["tt", "iterm", "focus", "{node}"], ["surf", "focus", "{node}"]],
+    "new-task":   [["tt", "iterm", "new-task", "{name}"]],
+    "new-tab":    [["tt", "iterm", "tab", "{name}"]],
+    "new-tab-cc": [["tt", "iterm", "tab", "{name}", "--claude"]],
 }
 
 _HTML = """<!doctype html><meta charset=utf-8>
@@ -47,7 +50,22 @@ _HTML = """<!doctype html><meta charset=utf-8>
  <button class=act onclick=act('sync')>⤓ sync</button>
  <button class=act onclick=act('apply')>⤒ apply</button>
  <button onclick=load()>↻</button>
+ <button class=act onclick=showLaunch()>＋ session</button>
 </header>
+<div id=launch style="display:none;padding:10px 20px;background:#171a21;border-bottom:1px solid #262b36">
+ <form onsubmit="startSession(event)" style="display:flex;gap:8px;align-items:center">
+  <span style="color:#7d8590;font-size:13px">name:</span>
+  <input id=lname type=text placeholder="program.area (e.g. bluebeam.rf)" required
+   style="font:inherit;background:#0f1115;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 10px;width:260px">
+  <select id=ltype style="font:inherit;background:#0f1115;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 10px">
+   <option value=new-task>new task window (+ orchestrator)</option>
+   <option value=new-tab-cc>new tab (Claude Code)</option>
+   <option value=new-tab>new tab (shell)</option>
+  </select>
+  <button class=act type=submit>launch</button>
+  <button type=button onclick=hideLaunch()>cancel</button>
+ </form>
+</div>
 <div class=wrap id=nodes></div>
 <div id=out></div>
 <script>
@@ -79,6 +97,20 @@ async function act(action,node){
   body:JSON.stringify({action,node})});
  const d=await r.json();document.getElementById('out').textContent=d.output;
  if(action!=='focus')load();
+}
+function showLaunch(){document.getElementById('launch').style.display='block';document.getElementById('lname').focus();}
+function hideLaunch(){document.getElementById('launch').style.display='none';}
+async function startSession(e){
+ e.preventDefault();
+ const name=document.getElementById('lname').value.trim();
+ const type=document.getElementById('ltype').value;
+ if(!name)return;
+ hideLaunch();
+ document.getElementById('out').textContent='launching '+type+' '+name+'…';
+ const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({action:type,name})});
+ const d=await r.json();document.getElementById('out').textContent=d.output;
+ setTimeout(load,1500);
 }
 load();
 </script>"""
@@ -120,12 +152,13 @@ class _Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         action, node = req.get("action"), req.get("node", "")
+        name = req.get("name", node)  # for new-task/new-tab; falls back to node
         cmds = _ACTIONS.get(action)
         if not cmds:
             return self._send(400, json.dumps({"output": f"unknown action {action!r}"}))
         lines = []
         for argv in cmds:
-            argv = [a.replace("{node}", node) for a in argv]
+            argv = [a.replace("{node}", node).replace("{name}", name) for a in argv]
             try:
                 r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
                 lines.append(f"$ {' '.join(argv)}\n{(r.stdout or r.stderr).strip()}")
