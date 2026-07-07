@@ -7,6 +7,7 @@ start a new session — by shelling out to tt / surf. Localhost only.
 """
 
 import json
+import re
 import subprocess
 import time
 import webbrowser
@@ -23,6 +24,14 @@ _ACTIONS = {
     "fork":       [["tt", "iterm", "fork", "--node", "{node}", "--new"]],
 }
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _strip_ansi(s: str) -> str:
+    """tt/surf colorize their terminal output; strip the escape codes so the
+    GUI's shell pane (a <pre>, not a real terminal) doesn't show raw \\x1b[2m."""
+    return _ANSI_RE.sub("", s)
+
 _HTML = """<!doctype html><meta charset=utf-8>
 <title>geno · workspace</title>
 <style>
@@ -33,6 +42,8 @@ _HTML = """<!doctype html><meta charset=utf-8>
  h1{font-size:15px;margin:0;font-weight:600}h1 small{color:#7d8590;font-weight:400}
  button{font:inherit;background:#2a3140;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 11px;cursor:pointer}
  button:hover{background:#343d4f}button.act{background:#1f6feb;border-color:#1f6feb}
+ button:disabled{background:#171a21;color:#4d5566;border-color:#262b36;cursor:not-allowed}
+ button:disabled:hover{background:#171a21}
  .spacer{flex:1}
  #search{font:inherit;background:#0f1115;color:#e6e6e6;border:1px solid #3a4252;border-radius:6px;padding:5px 10px;width:200px}
 
@@ -265,9 +276,10 @@ function renderLeafDetail(path,n){
  document.getElementById('dbody').innerHTML=
   `<div class=dsection><div class=dlabel>⌁ iterm</div>${itHtml}</div>`+
   `<div class=dsection><div class=dlabel>${swatch}⧉ chrome</div>${chHtml}</div>`;
+ const noSurfaces=!it&&!ch;
  document.getElementById('dactions').innerHTML=
-  `<button class=act onclick="act('focus','${path}')">focus</button>`+
-  `<button onclick="act('fork','${path}')">⑂ fork</button>`+
+  `<button class=act ${noSurfaces?'disabled title="no live iTerm or Chrome tab to focus"':''} onclick="act('focus','${path}')">focus</button>`+
+  `<button ${!it?'disabled title="no live iTerm tab to fork"':''} onclick="act('fork','${path}')">⑂ fork</button>`+
   `<button onclick="showLaunch('${path}.')">+ tab here</button>`;
 }
 function renderBranchDetail(path){
@@ -424,7 +436,8 @@ class _Handler(BaseHTTPRequestHandler):
             argv = [a.replace("{node}", node).replace("{name}", name) for a in argv]
             try:
                 r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
-                lines.append(f"$ {' '.join(argv)}\n{(r.stdout or r.stderr).strip()}")
+                out = _strip_ansi((r.stdout or r.stderr).strip())
+                lines.append(f"$ {' '.join(argv)}\n{out}")
             except Exception as e:  # noqa: BLE001
                 lines.append(f"$ {' '.join(argv)}\n! {e}")
         self._send(200, json.dumps({"output": "\n\n".join(lines)}))
