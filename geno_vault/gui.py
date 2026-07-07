@@ -41,7 +41,8 @@ _HTML = """<!doctype html><meta charset=utf-8>
  #left{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
  #scroll{flex:1;overflow-y:auto}
 
- /* tier 1 — program cards, stacked in one alphabetical column so reading order is unambiguous */
+ /* tier 1 — program cards. Pinned "manager" card first, then the rest alphabetical
+    so reading order is unambiguous. */
  .grid{display:flex;flex-direction:column;gap:12px;padding:16px 20px;max-width:760px}
  .card{background:#12151b;border:1px solid #262b36;border-radius:10px;overflow:hidden}
  .chead{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#171a21;border-bottom:1px solid #262b36;cursor:pointer}
@@ -52,6 +53,11 @@ _HTML = """<!doctype html><meta charset=utf-8>
  .cbody.hidden{display:none}
  .cadd{margin-left:auto;background:none;border:none;color:#7d8590;font-size:16px;padding:0 4px;line-height:1}
  .cadd:hover{color:#58a6ff;background:none}
+
+ /* the manager card: the ecosystem's own control session — visually set apart, not just another program */
+ .card.pinned{border-color:#3d4a63;box-shadow:0 0 0 1px #1f6feb22}
+ .card.pinned .chead{background:linear-gradient(180deg,#182236,#161c28);border-bottom-color:#2a3a56}
+ .card.pinned .cname::before{content:"★ ";color:#58a6ff}
 
  /* tier 2 — object-notation tree: path + connector lines only, nothing else competing for the line */
  .tree{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -201,9 +207,13 @@ function render(d){
  lastData=d;
  document.getElementById('head').textContent=d.count+' nodes · '+(d.head||'no snapshot');
  const tree=buildTree(d.nodes);
- const groups=Object.entries(tree.children||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+ const groups=Object.entries(tree.children||{}).sort((a,b)=>{
+  if(a[0]==='manager')return -1;
+  if(b[0]==='manager')return 1;
+  return a[0].localeCompare(b[0]);
+ });
  document.getElementById('nodes').innerHTML=groups.map(([g,sub])=>
-  `<div class=card data-group="${g}">`+
+  `<div class="card${g==='manager'?' pinned':''}" data-group="${g}">`+
    `<div class=chead>`+
     `<span class=caret id=c-${g} onclick="toggle('${g}')">▾</span>`+
     `<span class=cname onclick="openDetail('${g}')" style="cursor:pointer">${g}</span>`+
