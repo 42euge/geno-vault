@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         print("  vault apply          Push the registry out to the surfaces")
         print("  vault watch [--apply]  Auto-commit on registry change (geno-pear poll)")
         print("  vault log            Registry git history")
+        print("  vault gui [--port N] [--no-open]  Local web control panel")
         return 0
 
     if cmd == "status":
@@ -69,6 +70,13 @@ def main(argv: list[str] | None = None) -> int:
     elif cmd == "log":
         for line in vault.log(20):
             print(f"  {line}")
+
+    elif cmd == "gui":
+        from . import gui
+        port = 8787
+        if "--port" in argv:
+            port = int(argv[argv.index("--port") + 1])
+        gui.serve(port=port, open_browser="--no-open" not in argv)
 
     elif cmd == "watch":
         apply = "--apply" in argv

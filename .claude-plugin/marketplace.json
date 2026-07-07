@@ -6,7 +6,7 @@
       "name": "geno-vault",
       "source": "./",
       "description": "Persistence + sync conductor for the geno object-notation registry",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "license": "MIT",
       "homepage": "https://github.com/42euge/geno-vault",
       "repository": "https://github.com/42euge/geno-vault",
