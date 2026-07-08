@@ -39,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
         print("  vault watch [--apply]  Auto-commit on registry change (geno-pear poll)")
         print("  vault log            Registry git history")
         print("  vault gui [--port N] [--no-open]  Local web control panel")
+        print("  vault serve [--verbose]  Persistent daemon: watch iTerm2 layout events,")
+        print("                           keep registry in sync, tint managed tabs")
         return 0
 
     if cmd == "status":
@@ -112,6 +114,10 @@ def main(argv: list[str] | None = None) -> int:
                     time.sleep(1)
         except KeyboardInterrupt:
             print("\nstopped.")
+
+    elif cmd == "serve":
+        from . import daemon
+        daemon.run(verbose="--verbose" in argv)
 
     else:
         raise SystemExit(f"Unknown command '{cmd}'. Try: vault --help")
