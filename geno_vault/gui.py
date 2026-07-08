@@ -462,6 +462,14 @@ def _auto_pull_loop(stop: threading.Event) -> None:
                 pass
 
 
+def _open_bg(url: str) -> None:
+    """Open url in the background — no focus steal. Falls back to webbrowser."""
+    try:
+        subprocess.run(["open", "-g", url], check=False)
+    except OSError:
+        webbrowser.open(url)
+
+
 def serve(port: int = 8787, open_browser: bool = True) -> None:
     srv = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
     url = f"http://127.0.0.1:{port}/"
@@ -469,7 +477,7 @@ def serve(port: int = 8787, open_browser: bool = True) -> None:
     threading.Thread(target=_auto_pull_loop, args=(stop,), daemon=True).start()
     print(f"geno workspace GUI → {url}  (Ctrl-C to stop)")
     if open_browser:
-        webbrowser.open(url)
+        _open_bg(url)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

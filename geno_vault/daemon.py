@@ -163,12 +163,43 @@ async def _run_daemon(iterm2, connection, vault_module) -> None:
     # Initial scan on connect
     await scan_and_sync()
 
-    # Subscribe to layout changes — fires on every tab open / close / rename / move
-    async with iterm2.LayoutChangeMonitor(connection) as monitor:
-        log.info("watching for layout changes…")
+    # new_session fires on tab/pane open; terminate_session fires on close.
+    # Title renames (tt iterm name) are caught by the 3s poll fallback below.
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def _enqueue(_conn, _msg):
+        await queue.put(1)
+
+    tokens = []
+    tokens.append(await iterm2.notifications.async_subscribe_to_new_session_notification(
+        connection, _enqueue))
+    tokens.append(await iterm2.notifications.async_subscribe_to_terminate_session_notification(
+        connection, _enqueue))
+
+    log.info("watching for session open/close events (+ 3s poll for renames)…")
+
+    async def _poll():
+        """3-second fallback poll — catches title renames that notifications miss."""
         while True:
-            await monitor.async_get()  # blocks until the next event
+            await asyncio.sleep(3)
+            await queue.put(1)
+
+    asyncio.ensure_future(_poll())
+
+    try:
+        while True:
+            await queue.get()
+            # Drain burst
+            await asyncio.sleep(0.1)
+            while not queue.empty():
+                queue.get_nowait()
             await scan_and_sync()
+    finally:
+        for tok in tokens:
+            try:
+                await iterm2.notifications.async_unsubscribe(connection, tok)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def run(verbose: bool = False) -> None:
