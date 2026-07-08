@@ -1,6 +1,6 @@
 """A simple local web GUI for managing the workspace registry.
 
-`vault gui` serves a one-page control panel (stdlib http.server, no deps) that
+`geno-vault gui` serves a one-page control panel (stdlib http.server, no deps) that
 shows every object-notation node with its surfaces, live-updating over SSE as
 the registry changes, and offers actions — focus a node (iTerm + Chrome),
 start a new session — by shelling out to tt / surf. Localhost only.

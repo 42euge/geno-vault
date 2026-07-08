@@ -24,11 +24,11 @@ owns none of the surfaces — it **conducts** them and **versions** the result.
 ## Commands
 
 ```
-vault status         unified cross-surface view + vault HEAD
-vault sync           pull tt + surf into the registry, then git-commit a snapshot
-vault apply          push the registry back out to both surfaces
-vault watch [--apply]  auto-commit on registry change (geno-pear's poll loop)
-vault log            registry git history
+geno-vault status         unified cross-surface view + vault HEAD
+geno-vault sync           pull tt + surf into the registry, then git-commit a snapshot
+geno-vault apply          push the registry back out to both surfaces
+geno-vault watch [--apply]  auto-commit on registry change (geno-pear's poll loop)
+geno-vault log            registry git history
 ```
 
 ## Versioning
@@ -39,7 +39,7 @@ history — diff and revert any change.
 
 ## Watch (reused from geno-pear)
 
-`vault watch` uses [geno-pear](https://github.com/42euge/geno-pear)'s mtime-poll
+`geno-vault watch` uses [geno-pear](https://github.com/42euge/geno-pear)'s mtime-poll
 mechanism (`stat` the file each second, act on change) — the same watch pattern
 that powers pear's companion — to auto-commit the registry whenever a surface
 rewrites it, and optionally re-apply (`--apply`).

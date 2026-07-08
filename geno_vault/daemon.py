@@ -213,7 +213,7 @@ def run(verbose: bool = False) -> None:
         import iterm2
     except ImportError:
         raise SystemExit(
-            "vault serve needs the iterm2 package.\n"
+            "geno-vault serve needs the iterm2 package.\n"
             "  pipx inject geno-vault iterm2\n"
             "and enable iTerm2 ▸ Settings ▸ General ▸ Magic ▸ Enable Python API."
         )

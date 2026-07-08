@@ -32,15 +32,15 @@ def main(argv: list[str] | None = None) -> int:
     cmd = argv[0] if argv else "status"
 
     if cmd in ("-h", "--help"):
-        print("vault — sync conductor for the geno object-notation registry")
-        print("  vault status         Unified cross-surface view + vault HEAD")
-        print("  vault sync           Pull tt + surf into the registry, commit snapshot")
-        print("  vault apply          Push the registry out to the surfaces")
-        print("  vault watch [--apply]  Auto-commit on registry change (geno-pear poll)")
-        print("  vault log            Registry git history")
-        print("  vault gui [--port N] [--no-open]  Local web control panel")
-        print("  vault serve [--verbose]  Persistent daemon: watch iTerm2 layout events,")
-        print("                           keep registry in sync, tint managed tabs")
+        print("geno-vault — sync conductor for the geno object-notation registry")
+        print("  geno-vault status         Unified cross-surface view + vault HEAD")
+        print("  geno-vault sync           Pull tt + surf into the registry, commit snapshot")
+        print("  geno-vault apply          Push the registry out to the surfaces")
+        print("  geno-vault watch [--apply]  Auto-commit on registry change (geno-pear poll)")
+        print("  geno-vault log            Registry git history")
+        print("  geno-vault gui [--port N] [--no-open]  Local web control panel")
+        print("  geno-vault serve [--verbose]  Persistent daemon: watch iTerm2 layout events,")
+        print("                               keep registry in sync, tint managed tabs")
         return 0
 
     if cmd == "status":
@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
                 surf.append(f"chrome:{len(node['chrome'].get('urls', []))}t/{node['chrome'].get('color','')}")
             print(f"  {_BOLD}{path}{_RESET}  {_DIM}[{' · '.join(surf) or 'no surfaces'}]{_RESET}")
         hist = vault.log(1)
-        print(f"{_DIM}vault HEAD: {hist[0] if hist else '(no commits yet — run vault sync)'}{_RESET}")
+        print(f"{_DIM}vault HEAD: {hist[0] if hist else '(no commits yet — run geno-vault sync)'}{_RESET}")
 
     elif cmd == "sync":
         print("pulling surfaces into the registry…")
@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         apply = "--apply" in argv
         f = vault.REGISTRY
         if not f.exists():
-            raise SystemExit(f"registry {f} doesn't exist yet — run vault sync first.")
+            raise SystemExit(f"registry {f} doesn't exist yet — run geno-vault sync first.")
 
         def _on_change(_path):
             sha = vault.snapshot("watch: registry changed " + time.strftime("%H:%M:%S"))
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         daemon.run(verbose="--verbose" in argv)
 
     else:
-        raise SystemExit(f"Unknown command '{cmd}'. Try: vault --help")
+        raise SystemExit(f"Unknown command '{cmd}'. Try: geno-vault --help")
     return 0
 
 
