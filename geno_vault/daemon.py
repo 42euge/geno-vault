@@ -101,6 +101,8 @@ async def _run_daemon(iterm2, connection, vault_module) -> None:
     _tinted: dict[str, tuple[int, int, int] | None] = {}
     # Track sticky titles so we can re-enforce them if iTerm drifts the title.
     _sticky: dict[str, str] = {}  # tab_id → dot-notation title
+    # Separate set for "seen" sessions — warn about unnamed tabs ONCE only.
+    _seen: set[str] = set()
 
     async def _enforce_title(tab, title: str) -> None:
         """Re-apply sticky title if iTerm2 let it drift (e.g. Claude re-titled it)."""
@@ -123,10 +125,11 @@ async def _run_daemon(iterm2, connection, vault_module) -> None:
                 raw_title = await _tab_title(t)
                 title = _clean(raw_title)
                 if not _is_managed(title):
-                    # Warn once about new unnamed tabs (new sessions that haven't been named)
+                    # Warn ONCE per session about unnamed tabs
                     for s in t.sessions:
                         sid = s.session_id
-                        if sid not in _tinted:  # unseen session
+                        if sid not in _seen:
+                            _seen.add(sid)
                             job = (await s.async_get_variable("jobName")) or ""
                             tty = (await s.async_get_variable("tty")) or ""
                             log.warning("unnamed tab — tty=%s job=%s title=%r  (run: tt name -i)",
@@ -168,10 +171,10 @@ async def _run_daemon(iterm2, connection, vault_module) -> None:
                 await _tint(session, rgb)
                 _tinted[sid] = rgb
                 log.debug("tinted %s → %s", title, rgb)
-            # Mark all panes in this tab as seen (suppresses unnamed-tab warning on re-scan)
+            # Mark all panes in this managed tab as seen
             if "_tab" in info:
                 for s in info["_tab"].sessions:
-                    _tinted.setdefault(s.session_id, None)
+                    _seen.add(s.session_id)
 
         # Remove iterm key from nodes whose tab has been closed
         for title, node in list(nodes.items()):
