@@ -182,8 +182,15 @@ async def _run_daemon(iterm2, connection, vault_module) -> None:
                 del node["iterm"]
                 changed = True
                 log.info("cleared stale iterm key: %s", title)
-                # If we had a session for this node before, clear its tint record
                 _tinted.pop(title, None)
+
+        # Prune nodes that have no surfaces at all — don't let the registry
+        # accumulate ghost entries from sessions that closed long ago.
+        for title in [k for k, v in nodes.items()
+                      if not v.get("iterm") and not v.get("chrome")]:
+            del nodes[title]
+            changed = True
+            log.info("pruned empty node: %s", title)
 
         if changed:
             reg["nodes"] = nodes
