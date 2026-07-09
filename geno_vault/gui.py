@@ -21,11 +21,12 @@ _AUTO_PULL_INTERVAL = 45  # seconds — keeps the registry from going stale afte
 
 # Whitelisted actions → argv. {node} and {name} are substituted from the request.
 _ACTIONS = {
-    "focus":      [["tt", "iterm", "focus", "{node}"], ["surf", "focus", "{node}"]],
-    "new-task":   [["tt", "iterm", "new-task", "{name}"]],
-    "new-tab":    [["tt", "iterm", "tab", "{name}"]],
-    "new-tab-cc": [["tt", "iterm", "tab", "{name}", "--claude"]],
-    "fork":       [["tt", "iterm", "fork", "--node", "{node}", "--new"]],
+    "focus":       [["tt", "iterm", "focus", "{node}"], ["surf", "focus", "{node}"]],
+    "new-task":    [["tt", "iterm", "new-task", "{name}"]],
+    "new-tab":     [["tt", "iterm", "tab", "{name}"]],
+    "new-tab-cc":  [["tt", "iterm", "tab", "{name}", "--claude"]],
+    "fork":        [["tt", "iterm", "fork", "--node", "{node}", "--new"]],
+    "new-manager": [["tt", "iterm", "new-task", "{name}"]],
 }
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -73,6 +74,13 @@ _HTML = """<!doctype html><meta charset=utf-8>
  .card.pinned{border-color:#3d4a63;box-shadow:0 0 0 1px #1f6feb22}
  .card.pinned .chead{background:linear-gradient(180deg,#182236,#161c28);border-bottom-color:#2a3a56}
  .card.pinned .cname::before{content:"★ ";color:#58a6ff}
+ /* empty manager placeholder card */
+ .card.manager-empty{border:1px dashed #3d4a63;background:#0f1318}
+ .card.manager-empty .chead{background:linear-gradient(180deg,#131a24,#0f1318);border-bottom:none}
+ .card.manager-empty .cname{color:#4d6080;font-style:italic}
+ /* per-program manager button */
+ .mgr-btn{font-size:11px;padding:1px 7px;background:none;border:1px solid #3d4a63;color:#4d6080;border-radius:8px;margin-left:6px}
+ .mgr-btn:hover{background:#182236;color:#58a6ff;border-color:#58a6ff}
 
  /* tier 2 — object-notation tree: path + connector lines only, nothing else competing for the line */
  .tree{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -218,29 +226,70 @@ function renderChildren(children,prefix){
 function toggle(g){document.getElementById('b-'+g).classList.toggle('hidden');
  const c=document.getElementById('c-'+g);c.textContent=c.textContent==='▾'?'▸':'▾';}
 let lastData=null, selectedPath=null;
+function mgrNodeFor(program){
+ // Returns the manager node path that manages this program, if live in the registry
+ const candidates=[`manager.${program}`, 'manager.main'];
+ for(const p of candidates){
+  if((lastData.nodes||[]).find(n=>n.path===p&&n.iterm))return p;
+ }
+ return null;
+}
+function launchManager(program){
+ const name=`manager.${program}`;
+ act('new-manager', name);
+}
+function focusManager(mgrPath){
+ act('focus', mgrPath);
+}
 function render(d){
  lastData=d;
  document.getElementById('head').textContent=d.count+' nodes · '+(d.head||'no snapshot');
  const tree=buildTree(d.nodes);
+ const hasManager='manager' in (tree.children||{});
  const groups=Object.entries(tree.children||{}).sort((a,b)=>{
   if(a[0]==='manager')return -1;
   if(b[0]==='manager')return 1;
   return a[0].localeCompare(b[0]);
  });
- document.getElementById('nodes').innerHTML=groups.map(([g,sub])=>
-  `<div class="card${g==='manager'?' pinned':''}" data-group="${g}">`+
+
+ // Build cards
+ const cards=groups.map(([g,sub])=>{
+  const isManager=g==='manager';
+  // Per-program manager button for non-manager cards
+  const mgrPath=!isManager?mgrNodeFor(g):null;
+  const mgrBtn=!isManager?
+   (mgrPath
+    ?`<button class=mgr-btn title="focus manager for ${g}" onclick="event.stopPropagation();focusManager('${mgrPath}')">⎋ manager</button>`
+    :`<button class=mgr-btn title="create manager for ${g}" onclick="event.stopPropagation();launchManager('${g}')">+ manager</button>`)
+   :'';
+  return `<div class="card${isManager?' pinned':''}" data-group="${g}">`+
    `<div class=chead>`+
     `<span class=caret id=c-${g} onclick="toggle('${g}')">▾</span>`+
     `<span class=cname onclick="openDetail('${g}')" style="cursor:pointer">${g}</span>`+
     `<span class=ccount>${leafCount(sub)}</span>`+
+    mgrBtn+
     `<button class=cadd title="new session under ${g}" onclick="event.stopPropagation();showLaunch('${g}.')">＋</button>`+
    `</div>`+
    `<div class="cbody tree" id=b-${g}>${renderChildren(sub.children,'')}</div>`+
-  `</div>`
- ).join('') || '<i style="padding:0 20px">registry empty</i>';
+  `</div>`;
+ });
+
+ // Prepend a placeholder manager card if none exists
+ if(!hasManager){
+  cards.unshift(
+   `<div class="card manager-empty" data-group="_mgr_placeholder">`+
+    `<div class=chead>`+
+     `<span class=cname>manager</span>`+
+     `<button class=act style="font-size:12px;padding:3px 10px;margin-left:auto" onclick="act('new-manager','manager.main')">★ start manager</button>`+
+    `</div>`+
+   `</div>`
+  );
+ }
+
+ document.getElementById('nodes').innerHTML=cards.join('')||'<i style="padding:0 20px">registry empty</i>';
  applyFilter();
  markSelected();
- if(selectedPath)openDetail(selectedPath);  // refresh panel content if it's open
+ if(selectedPath)openDetail(selectedPath);
 }
 function markSelected(){
  document.querySelectorAll('.leaf.sel').forEach(el=>el.classList.remove('sel'));
