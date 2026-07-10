@@ -21,12 +21,13 @@ _AUTO_PULL_INTERVAL = 45  # seconds — keeps the registry from going stale afte
 
 # Whitelisted actions → argv. {node} and {name} are substituted from the request.
 _ACTIONS = {
-    "focus":       [["tt", "iterm", "focus", "{node}"], ["surf", "focus", "{node}"]],
-    "new-task":    [["tt", "iterm", "new-task", "{name}"]],
-    "new-tab":     [["tt", "iterm", "tab", "{name}"]],
-    "new-tab-cc":  [["tt", "iterm", "tab", "{name}", "--claude"]],
-    "fork":        [["tt", "iterm", "fork", "--node", "{node}", "--new"]],
-    "new-manager": [["tt", "iterm", "new-task", "{name}"]],
+    "focus":        [["tt", "iterm", "focus", "{node}"], ["surf", "focus", "{node}"]],
+    "new-task":     [["tt", "iterm", "new-task", "{name}"]],
+    "new-tab":      [["tt", "iterm", "tab", "{name}"]],
+    "new-tab-cc":   [["tt", "iterm", "tab", "{name}", "--claude"]],
+    "fork":         [["tt", "iterm", "fork", "--node", "{node}", "--new"]],
+    "new-manager":  [["tt", "iterm", "new-task", "{name}"]],
+    # vscode-open is handled specially in do_POST (needs path + optional host from registry)
 }
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -314,7 +315,7 @@ function openDetail(path){
  document.getElementById('detail').classList.add('open');
 }
 function renderLeafDetail(path,n){
- const it=n.iterm, ch=n.chrome;
+ const it=n.iterm, ch=n.chrome, vs=n.vscode;
  const itHtml=it?
   `<div class=drow><b>tty</b>${it.tty||'—'}</div>`+
   `<div class=drow><b>cwd</b>${it.cwd||'—'}</div>`+
@@ -326,14 +327,26 @@ function renderLeafDetail(path,n){
   `<div class=drow><b>color</b>${ch.color||'—'}</div>`+
   (ch.urls&&ch.urls.length?ch.urls.map(u=>`<a class=durl href="${u}" target=_blank>${u}</a>`).join(''):`<div class=dempty>no tabs</div>`)
   :`<div class=dempty>no Chrome tab group attached</div>`;
+ const vsHtml=vs?
+  `<div class=drow><b>file</b>${vs.workspace}</div>`+
+  (vs.host?`<div class=drow><b>host</b>${vs.host}</div>`:'' )
+  :`<div class=dempty>no workspace registered — <a class=durl href="#" onclick="promptRegisterVS('${path}');return false">register one</a></div>`;
  document.getElementById('dbody').innerHTML=
   `<div class=dsection><div class=dlabel>⌁ iterm</div>${itHtml}</div>`+
-  `<div class=dsection><div class=dlabel>${swatch}⧉ chrome</div>${chHtml}</div>`;
+  `<div class=dsection><div class=dlabel>${swatch}⧉ chrome</div>${chHtml}</div>`+
+  `<div class=dsection><div class=dlabel>⎔ vscode</div>${vsHtml}</div>`;
  const noSurfaces=!it&&!ch;
  document.getElementById('dactions').innerHTML=
   `<button class=act ${noSurfaces?'disabled title="no live iTerm or Chrome tab to focus"':''} onclick="act('focus','${path}')">focus</button>`+
   `<button ${!it?'disabled title="no live iTerm tab to fork"':''} onclick="act('fork','${path}')">⑂ fork</button>`+
+  `<button class=act ${!vs?'disabled title="no VS Code workspace registered"':''} onclick="act('vscode-open','${path}')">⎔ VS Code</button>`+
   `<button onclick="showLaunch('${path}.')">+ tab here</button>`;
+}
+function promptRegisterVS(path){
+ const ws=prompt('VS Code workspace file path (absolute):','');
+ if(!ws)return;
+ const host=prompt('Remote host (leave blank for local):','');
+ act('vscode-register',path,{workspace:ws,host:host||''});
 }
 function renderBranchDetail(path){
  // a group/branch node: no surfaces of its own — show the rollup + the leaves under it
@@ -363,12 +376,12 @@ function closeDetail(){
  document.getElementById('detail').classList.remove('open');
  markSelected();
 }
-async function act(action,node){
+async function act(action,node,extra){
  const out=document.getElementById('out');
  out.textContent+=(out.textContent?'\\n\\n':'')+'$ '+action+(node?' '+node:'')+'…';
  out.scrollTop=out.scrollHeight;
  const r=await fetch('/api/action',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({action,node})});
+  body:JSON.stringify({action,node,...(extra||{})})});
  const d=await r.json();
  out.textContent+='\\n'+d.output;
  out.scrollTop=out.scrollHeight;
@@ -408,6 +421,7 @@ def _status() -> dict:
     for path, n in sorted(reg.items()):
         it = n.get("iterm")
         ch = n.get("chrome")
+        vs = n.get("vscode")
         nodes.append({
             "path": path,
             "iterm": {
@@ -419,6 +433,10 @@ def _status() -> dict:
                 "tabs": len(ch.get("urls", [])), "color": ch.get("color", ""),
                 "group": ch.get("group", ""), "urls": ch.get("urls", []),
             } if ch else None,
+            "vscode": {
+                "workspace": vs.get("workspace", ""),
+                "host": vs.get("host", ""),
+            } if vs else None,
         })
     head = (vault.log(1) or [""])[0]
     return {"count": len(nodes), "nodes": nodes, "head": head}
@@ -480,7 +498,39 @@ class _Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         action, node = req.get("action"), req.get("node", "")
-        name = req.get("name", node)  # for new-task/new-tab; falls back to node
+        name = req.get("name", node)
+
+        # ---- VS Code open ----
+        if action == "vscode-open":
+            reg = vault.load_registry()
+            vs = reg.get("nodes", {}).get(node, {}).get("vscode")
+            if not vs or not vs.get("workspace"):
+                return self._send(200, json.dumps({"output": "no VS Code workspace registered for this node"}))
+            ws_path = vs["workspace"]
+            host = vs.get("host", "")
+            argv = (["code", "--remote", f"ssh-remote+{host}", ws_path]
+                    if host else ["code", ws_path])
+            try:
+                subprocess.Popen(argv)
+                out = f"opening {ws_path}" + (f" on {host}" if host else "")
+            except Exception as e:  # noqa: BLE001
+                out = f"! {e}"
+            return self._send(200, json.dumps({"output": out}))
+
+        # ---- VS Code register ----
+        if action == "vscode-register":
+            ws_path = req.get("workspace", "").strip()
+            host = req.get("host", "").strip()
+            if not ws_path:
+                return self._send(400, json.dumps({"output": "workspace path required"}))
+            reg = vault.load_registry()
+            nodes = reg.setdefault("nodes", {})
+            nodes.setdefault(node, {})["vscode"] = {"workspace": ws_path, "host": host}
+            vault.REGISTRY.write_text(json.dumps(reg, indent=2))
+            vault.snapshot(f"vscode: register {node}")
+            return self._send(200, json.dumps({"output": f"registered {ws_path}" + (f" on {host}" if host else "")}))
+
+        # ---- standard whitelisted actions ----
         cmds = _ACTIONS.get(action)
         if not cmds:
             return self._send(400, json.dumps({"output": f"unknown action {action!r}"}))

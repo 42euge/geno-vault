@@ -41,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
         print("  geno-vault gui [--port N] [--no-open]  Local web control panel")
         print("  geno-vault serve [--verbose]  Persistent daemon: watch iTerm2 layout events,")
         print("                               keep registry in sync, tint managed tabs")
+        print("  geno-vault ws <sub>       Workspace management:")
+        print("    ws init <path> [--host H] [--repo URL ...] [--ticket KEY]")
+        print("    ws add-repo <path> --repo URL [--host H]")
+        print("    ws add-ticket <path> --ticket KEY")
+        print("    ws open <path>")
         return 0
 
     if cmd == "status":
@@ -118,6 +123,44 @@ def main(argv: list[str] | None = None) -> int:
     elif cmd == "serve":
         from . import daemon
         daemon.run(verbose="--verbose" in argv)
+
+    elif cmd == "ws":
+        import argparse
+        from . import ws as _ws
+        sub = argv[1] if len(argv) > 1 else "--help"
+        p = argparse.ArgumentParser(prog="geno-vault ws", add_help=False)
+        subs = p.add_subparsers(dest="ws_cmd")
+
+        p_init = subs.add_parser("init")
+        p_init.add_argument("dot_path")
+        p_init.add_argument("--host", default="")
+        p_init.add_argument("--repo", action="append", default=[])
+        p_init.add_argument("--ticket", default="")
+
+        p_add = subs.add_parser("add-repo")
+        p_add.add_argument("dot_path")
+        p_add.add_argument("--repo", required=True)
+        p_add.add_argument("--host", default="")
+
+        p_tkt = subs.add_parser("add-ticket")
+        p_tkt.add_argument("dot_path")
+        p_tkt.add_argument("--ticket", required=True)
+        p_tkt.add_argument("--host", default="")
+
+        p_open = subs.add_parser("open")
+        p_open.add_argument("dot_path")
+
+        args = p.parse_args(argv[1:])
+        dispatch = {
+            "init":       _ws.cmd_init,
+            "add-repo":   _ws.cmd_add_repo,
+            "add-ticket": _ws.cmd_add_ticket,
+            "open":       _ws.cmd_open,
+        }
+        if not args.ws_cmd or args.ws_cmd not in dispatch:
+            p.print_help()
+            return 1
+        return dispatch[args.ws_cmd](args)
 
     else:
         raise SystemExit(f"Unknown command '{cmd}'. Try: geno-vault --help")
